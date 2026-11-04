@@ -35,8 +35,10 @@ const (
 )
 
 type scrobList struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IsWatchlist bool   `json:"is_watchlist"`
 }
 
 type scrobListsResponse struct {
@@ -261,7 +263,13 @@ func writeWatchlist(ctx context.Context, client *apiClient, events []*pluginv1.W
 	if fault != nil {
 		return failAll(pending, results, fault)
 	}
-	for _, event := range pending {
+	return addListItems(ctx, client, listID, pending, results, errWatchlistTitleNotFound)
+}
+
+// addListItems adds each event's title to a Scrob list. An item already on
+// the list is NO_CHANGE.
+func addListItems(ctx context.Context, client *apiClient, listID int, events []*pluginv1.WatchSyncEvent, results *resultSet, notFound string) *pluginv1.WatchSyncFault {
+	for _, event := range events {
 		ids := idsFromExternal(event.GetMedia().GetExternalIds())
 		body := scrobListItemIn{TMDBID: ids.TMDB, MediaType: mediaType(event.GetMedia().GetMediaType())}
 		if ids.TMDB <= 0 {
@@ -274,7 +282,7 @@ func writeWatchlist(ctx context.Context, client *apiClient, events []*pluginv1.W
 		case status == http.StatusConflict:
 			results.set(event, pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_NO_CHANGE)
 		case status == http.StatusNotFound:
-			results.reject(event, errWatchlistTitleNotFound)
+			results.reject(event, notFound)
 		case connectionWide(fault):
 			return fault
 		default:
@@ -295,6 +303,12 @@ func removeFromWatchlist(ctx context.Context, client *apiClient, events []*plugi
 		}
 		return nil
 	}
+	return removeListItems(ctx, client, listID, events, results)
+}
+
+// removeListItems takes each event's title off a Scrob list. A title already
+// gone is NO_CHANGE.
+func removeListItems(ctx context.Context, client *apiClient, listID int, events []*pluginv1.WatchSyncEvent, results *resultSet) *pluginv1.WatchSyncFault {
 	items, fault := watchlistItems(ctx, client, listID)
 	if fault != nil {
 		return failAll(events, results, fault)
