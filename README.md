@@ -15,7 +15,7 @@ Connects Silo profiles to a self-hosted [Scrob](https://github.com/ellite/scrob)
 
 ## Watchlist
 
-On a Scrob with a native watchlist ([ellite/scrob#512](https://github.com/ellite/scrob/pull/512)), Silo's watchlist syncs with it. That is the same list Scrob syncs with Plex, Trakt, MDBList and Simkl, so a title added on any of them reaches Silo, and one added in Silo reaches them, through Scrob. If an older version of the plugin left a **Silo - Watchlist** list behind, the plugin moves its titles to the native watchlist and deletes it. A list that also holds something the plugin never adds there, such as a season, keeps it and stays.
+On Scrob 2.38.0 or later, which has a native watchlist ([ellite/scrob#512](https://github.com/ellite/scrob/pull/512)), Silo's watchlist syncs with it. That is the same list Scrob syncs with Plex, Trakt, MDBList and Simkl, so a title added on any of them reaches Silo, and one added in Silo reaches them, through Scrob. If an older version of the plugin left a **Silo - Watchlist** list behind, the plugin moves its titles to the native watchlist and deletes the old list. Something the plugin never adds there, such as a season, stays on the old list, and so does the list. If the move fails, the sync fails and the next one finishes the move.
 
 On an older Scrob, which has only named lists, Silo's watchlist lives in a Scrob list named **Silo - Watchlist**, which the first export creates. The plugin never touches your other lists, including ones that mirror other services, so a title can sit on several of them.
 

@@ -370,7 +370,11 @@ func TestNativeWatchlistAdoptsTheOldPluginList(t *testing.T) {
 	if fault != nil || id != 3 {
 		t.Fatalf("findWatchlist() = %d, %v; want the native watchlist", id, fault)
 	}
-	want := []string{"add /lists/3/items movie", "add /lists/3/items series", "delete /lists/9"}
+	want := []string{
+		"add /lists/3/items movie", "delete /lists/9/items/90",
+		"add /lists/3/items series", "delete /lists/9/items/91",
+		"delete /lists/9",
+	}
 	if strings.Join(f.writes, "; ") != strings.Join(want, "; ") {
 		t.Errorf("writes = %v, want %v", f.writes, want)
 	}
@@ -395,37 +399,49 @@ func TestNativeWatchlistAdoptionTreatsAConflictAsMoved(t *testing.T) {
 	}
 }
 
-// A failed move, or a list holding something the plugin never adds, keeps
-// the old list so nothing is lost; the move is retried on the next sync.
-func TestNativeWatchlistAdoptionKeepsTheOldListWhenItCannotMoveEverything(t *testing.T) {
-	season := 1
-	cases := map[string]*fakeLists{
-		"failed add": {
-			native: 3, addStatus: http.StatusInternalServerError,
-			lists: []scrobList{{ID: 3, Name: "Watchlist"}, {ID: 9, Name: watchlistName}},
-			items: map[int][]scrobListItem{9: {{ID: 90, Media: scrobMedia{Type: "movie", TMDBID: 42}}}},
-		},
-		"season on the list": {
-			native: 3,
-			lists:  []scrobList{{ID: 3, Name: "Watchlist"}, {ID: 9, Name: watchlistName}},
-			items:  map[int][]scrobListItem{9: {{ID: 90, Media: scrobMedia{Type: "series", TMDBID: 1399, SeasonNumber: &season}}}},
-		},
+// A failed move fails the call and keeps the old list with the title on it,
+// so Silo never reads a native watchlist missing titles it last saw there.
+// The next sync resumes the move.
+func TestNativeWatchlistAdoptionFailureFailsTheCall(t *testing.T) {
+	f := &fakeLists{
+		native: 3, addStatus: http.StatusInternalServerError,
+		lists: []scrobList{{ID: 3, Name: "Watchlist"}, {ID: 9, Name: watchlistName}},
+		items: map[int][]scrobListItem{9: {{ID: 90, Media: scrobMedia{Type: "movie", TMDBID: 42}}}},
 	}
-	for name, f := range cases {
-		t.Run(name, func(t *testing.T) {
-			client, done := f.serve(t)
-			defer done()
+	client, done := f.serve(t)
+	defer done()
 
-			id, fault := findWatchlist(context.Background(), client)
-			if fault != nil || id != 3 {
-				t.Fatalf("findWatchlist() = %d, %v; want the native watchlist", id, fault)
-			}
-			for _, write := range f.writes {
-				if write == "delete /lists/9" {
-					t.Errorf("writes = %v, want the old list kept", f.writes)
-				}
-			}
-		})
+	resp, err := NewServer(nil).listWatchlist(context.Background(), client, false)
+	if err != nil || resp.GetFault() == nil || len(resp.GetItems()) != 0 {
+		t.Fatalf("listWatchlist() = %v, %v; want a fault and no snapshot", resp, err)
+	}
+	if want := []string{"add /lists/3/items movie"}; strings.Join(f.writes, "; ") != strings.Join(want, "; ") {
+		t.Errorf("writes = %v, want %v and the old list kept", f.writes, want)
+	}
+}
+
+// Something the plugin never adds, such as a season, keeps the old list, but
+// the titles it moved are taken off it. A later sync then can't put back a
+// title that was removed from the native watchlist in the meantime.
+func TestNativeWatchlistAdoptionKeepsOnlyWhatItCannotMove(t *testing.T) {
+	season := 1
+	f := &fakeLists{
+		native: 3,
+		lists:  []scrobList{{ID: 3, Name: "Watchlist"}, {ID: 9, Name: watchlistName}},
+		items: map[int][]scrobListItem{9: {
+			{ID: 90, Media: scrobMedia{Type: "movie", TMDBID: 42}},
+			{ID: 91, Media: scrobMedia{Type: "series", TMDBID: 1399, SeasonNumber: &season}},
+		}},
+	}
+	client, done := f.serve(t)
+	defer done()
+
+	id, fault := findWatchlist(context.Background(), client)
+	if fault != nil || id != 3 {
+		t.Fatalf("findWatchlist() = %d, %v; want the native watchlist", id, fault)
+	}
+	if want := []string{"add /lists/3/items movie", "delete /lists/9/items/90"}; strings.Join(f.writes, "; ") != strings.Join(want, "; ") {
+		t.Errorf("writes = %v, want %v and the old list kept", f.writes, want)
 	}
 }
 

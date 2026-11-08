@@ -99,7 +99,10 @@ func findWatchlist(ctx context.Context, client *apiClient) (int, *pluginv1.Watch
 		return legacyID, nil
 	}
 	if legacyID > 0 {
-		if fault := adoptLegacyWatchlist(ctx, client, legacyID, nativeID); fault != nil && connectionWide(fault) {
+		// A failed move fails the call rather than reading a native
+		// watchlist that lacks titles Silo last saw on the old list: with
+		// watchlist removals on, Silo would take those off its own.
+		if fault := adoptLegacyWatchlist(ctx, client, legacyID, nativeID); fault != nil {
 			return 0, fault
 		}
 	}
@@ -120,11 +123,15 @@ func findLegacyWatchlist(ctx context.Context, client *apiClient) (int, *pluginv1
 	return found, nil
 }
 
-// adoptLegacyWatchlist moves the plugin's own list into the native watchlist
-// and deletes it, so Silo's titles aren't kept twice. A title already on the
-// native watchlist is fine. If anything fails, or the list holds something the
-// plugin never puts there (a season, say), the list stays and the move is
-// tried again on the next sync.
+// adoptLegacyWatchlist moves the plugin's own list into the native watchlist,
+// so Silo's titles aren't kept twice. Each title is added to the native
+// watchlist and then taken off the old list; a title already on the native
+// watchlist (409), or one Scrob no longer has (404), counts as moved. Taking
+// each title off right away keeps a later sync from adding it back after it
+// was removed from the native watchlist. The old list is deleted once it is
+// empty. Something the plugin never puts there (a season, say) stays on it,
+// and so does the list. Any failure stops the move, which the next sync
+// resumes.
 func adoptLegacyWatchlist(ctx context.Context, client *apiClient, legacyID, nativeID int) *pluginv1.WatchSyncFault {
 	items, fault := watchlistItems(ctx, client, legacyID)
 	if fault != nil {
@@ -141,7 +148,11 @@ func adoptLegacyWatchlist(ctx context.Context, client *apiClient, legacyID, nati
 			body.TVDBID = item.Media.TVDBID
 		}
 		status, fault := client.postStatus(ctx, "/lists/"+strconv.Itoa(nativeID)+"/items", body, nil)
-		if fault != nil && status != http.StatusConflict {
+		if fault != nil && status != http.StatusConflict && status != http.StatusNotFound {
+			return fault
+		}
+		code, fault := client.delete(ctx, "/lists/"+strconv.Itoa(legacyID)+"/items/"+strconv.Itoa(item.ID), nil)
+		if fault != nil && code != http.StatusNotFound {
 			return fault
 		}
 	}
