@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"testing"
 
@@ -88,5 +89,49 @@ func TestWriteCollectionAddsAndRemovesOnTheNamedList(t *testing.T) {
 		if tc.wantWrite != "" && !slices.Contains(fake.writes, tc.wantWrite) {
 			t.Fatalf("writes = %v, want %q", fake.writes, tc.wantWrite)
 		}
+	}
+}
+
+// Scrob answers 409 both for a title already on a list and for a list it
+// won't let anyone edit, such as a copy of an MDBList list it mirrors. A
+// title already there is NO_CHANGE; one that isn't is rejected as read-only,
+// and so is a removal Scrob refuses.
+func TestWriteCollectionRejectsEditsToAReadOnlyList(t *testing.T) {
+	fake := &fakeLists{
+		lists:        []scrobList{{ID: 3, Name: "MDBList copy"}},
+		items:        map[int][]scrobListItem{3: {{ID: 30, Media: scrobMedia{Type: "movie", TMDBID: 42}}}},
+		addStatus:    http.StatusConflict,
+		deleteStatus: http.StatusConflict,
+	}
+	client, closeServer := fake.serve(t)
+	defer closeServer()
+	event := func(op pluginv1.WatchSyncOperation, id, tmdb string) *pluginv1.WatchSyncEvent {
+		e := watchlistEvent(op, movieType, map[string]string{"tmdb": tmdb})
+		e.EventId = id
+		e.CollectionKey = "3"
+		return e
+	}
+	addListed := event(pluginv1.WatchSyncOperation_WATCH_SYNC_OPERATION_ADD_TO_COLLECTION, "listed", "42")
+	addNew := event(pluginv1.WatchSyncOperation_WATCH_SYNC_OPERATION_ADD_TO_COLLECTION, "new", "7")
+	adds := []*pluginv1.WatchSyncEvent{addListed, addNew}
+	results := newResultSet(adds)
+	if fault := writeCollection(context.Background(), client, adds, results, false); fault != nil {
+		t.Fatalf("add fault: %v", fault)
+	}
+	got := results.list()
+	if got[0].GetStatus() != pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_NO_CHANGE {
+		t.Errorf("listed title = %v, want NO_CHANGE", got[0].GetStatus())
+	}
+	if got[1].GetStatus() != pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_REJECTED {
+		t.Errorf("new title on a read-only list = %v, want REJECTED", got[1].GetStatus())
+	}
+
+	remove := []*pluginv1.WatchSyncEvent{event(pluginv1.WatchSyncOperation_WATCH_SYNC_OPERATION_REMOVE_FROM_COLLECTION, "rm", "42")}
+	results = newResultSet(remove)
+	if fault := writeCollection(context.Background(), client, remove, results, true); fault != nil {
+		t.Fatalf("remove fault: %v", fault)
+	}
+	if status := results.list()[0].GetStatus(); status != pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_REJECTED {
+		t.Errorf("removal from a read-only list = %v, want REJECTED", status)
 	}
 }

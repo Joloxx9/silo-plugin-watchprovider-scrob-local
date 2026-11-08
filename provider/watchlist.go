@@ -32,6 +32,7 @@ const (
 	errWatchlistNeedsMedia    = "Scrob watchlist sync takes movies and series only"
 	errWatchlistNeedsID       = "Scrob watchlist sync requires a movie or series with a TMDB or TVDB id"
 	errWatchlistTitleNotFound = "Scrob could not find this title to add to its watchlist"
+	errListReadOnly           = "This Scrob list is read-only, such as a copy of an MDBList list; edit it at its source"
 )
 
 type scrobList struct {
@@ -278,8 +279,13 @@ func writeWatchlist(ctx context.Context, client *apiClient, events []*pluginv1.W
 }
 
 // addListItems adds each event's title to a Scrob list. An item already on
-// the list is NO_CHANGE.
+// the list is NO_CHANGE. Scrob answers 409 both for a title already listed
+// and for a list it won't let anyone edit, such as a copy of an MDBList list
+// it mirrors, so a 409 is checked against the list's items: a title missing
+// from the list is rejected as read-only rather than reported as unchanged.
 func addListItems(ctx context.Context, client *apiClient, listID int, events []*pluginv1.WatchSyncEvent, results *resultSet, notFound string) *pluginv1.WatchSyncFault {
+	var listed []scrobListItem
+	loaded := false
 	for _, event := range events {
 		ids := idsFromExternal(event.GetMedia().GetExternalIds())
 		body := scrobListItemIn{TMDBID: ids.TMDB, MediaType: mediaType(event.GetMedia().GetMediaType())}
@@ -291,7 +297,22 @@ func addListItems(ctx context.Context, client *apiClient, listID int, events []*
 		case fault == nil:
 			results.set(event, pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_APPLIED)
 		case status == http.StatusConflict:
-			results.set(event, pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_NO_CHANGE)
+			if !loaded {
+				items, fault := watchlistItems(ctx, client, listID)
+				if fault != nil {
+					if connectionWide(fault) {
+						return fault
+					}
+					results.fail(event, fault)
+					continue
+				}
+				listed, loaded = items, true
+			}
+			if listHolds(listed, event.GetMedia()) {
+				results.set(event, pluginv1.WatchSyncApplyStatus_WATCH_SYNC_APPLY_STATUS_NO_CHANGE)
+			} else {
+				results.reject(event, errListReadOnly)
+			}
 		case status == http.StatusNotFound:
 			results.reject(event, notFound)
 		case connectionWide(fault):
@@ -301,6 +322,15 @@ func addListItems(ctx context.Context, client *apiClient, listID int, events []*
 		}
 	}
 	return nil
+}
+
+func listHolds(items []scrobListItem, media *pluginv1.WatchSyncMedia) bool {
+	for _, item := range items {
+		if sameWatchlistTitle(item.Media, media) {
+			return true
+		}
+	}
+	return false
 }
 
 func removeFromWatchlist(ctx context.Context, client *apiClient, events []*pluginv1.WatchSyncEvent, results *resultSet) *pluginv1.WatchSyncFault {
@@ -332,10 +362,16 @@ func removeListItems(ctx context.Context, client *apiClient, listID int, events 
 			}
 			code, fault := client.delete(ctx, "/lists/"+strconv.Itoa(listID)+"/items/"+strconv.Itoa(item.ID), nil)
 			if fault != nil && code != http.StatusNotFound {
-				if connectionWide(fault) {
+				switch {
+				case connectionWide(fault):
 					return fault
+				case code == http.StatusConflict:
+					// Scrob refuses edits to a read-only list, such as
+					// a copy of an MDBList list it mirrors.
+					results.reject(event, errListReadOnly)
+				default:
+					results.fail(event, fault)
 				}
-				results.fail(event, fault)
 				status = 0
 				break
 			}
