@@ -1,6 +1,6 @@
 {
   "plugin_id": "silo.watchprovider.scrob",
-  "version": "0.2.12",
+  "version": "0.3.0",
   "checksum": "__CHECKSUM__",
   "silo_api_version": "v1",
   "supported_platforms": [
@@ -72,12 +72,12 @@
   "presentation": {
     "display_name": "Scrob Watch Provider",
     "summary": "Sync Silo watch activity with a self-hosted Scrob instance.",
-    "description_markdown": "Imports movie and episode watch history and resume points, exports completed watches and unwatches, syncs movie and series ratings in both directions, syncs dropped shows, syncs Silo's watchlist with Scrob's native watchlist (or, on older Scrob, a list named \"Silo - Watchlist\"), syncs your other Scrob lists both ways with Silo collections (needs a Silo build with list sync), and reports live playback to Scrob's Now Playing. Built against stock upstream Silo (plugin SDK v0.24.0).",
+    "description_markdown": "Imports movie and episode watch history and resume points, exports completed watches and unwatches, syncs movie and series ratings in both directions, syncs dropped shows, syncs Silo's watchlist with Scrob's native watchlist (or, on older Scrob, a list named \"Silo - Watchlist\"), syncs your other Scrob lists with Silo collections (needs a Silo build with collection sync; read-only Scrob lists, such as MDBList copies, reject edits from Silo), and reports live playback to Scrob's Now Playing. Personal build of the Silo-Community plugin, built against a plugin SDK fork that adds collection sync; stock Silo runs it without collections.",
     "setup_markdown": "Connect a Silo profile by entering that profile's Scrob server URL and API key (from Scrob's account settings). Different profiles can use different Scrob servers.",
     "homepage_url": "https://github.com/ellite/scrob",
-    "source_url": "https://github.com/Silo-Community/silo-plugin-watchprovider-scrob",
-    "support_url": "https://github.com/Silo-Community/silo-plugin-watchprovider-scrob/issues",
-    "changelog_url": "https://github.com/Silo-Community/silo-plugin-watchprovider-scrob/releases",
+    "source_url": "https://github.com/Joloxx9/silo-plugin-watchprovider-scrob-local",
+    "support_url": "https://github.com/Joloxx9/silo-plugin-watchprovider-scrob-local/issues",
+    "changelog_url": "https://github.com/Joloxx9/silo-plugin-watchprovider-scrob-local/releases",
     "publisher_name": "Joloxx9",
     "publisher_url": "https://github.com/Joloxx9",
     "license_spdx": "AGPL-3.0-only"

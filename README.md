@@ -2,6 +2,18 @@
 
 Connects Silo profiles to a self-hosted [Scrob](https://github.com/ellite/scrob) instance through Silo's `watch_sync_provider.v1` plugin contract.
 
+## Install from this repository
+
+This is a personal build of the [Silo-Community Scrob plugin](https://github.com/Silo-Community/silo-plugin-watchprovider-scrob) with collection sync added. Add this URL in Silo under **Admin → Plugins → Repositories**:
+
+```
+https://github.com/Joloxx9/silo-plugin-watchprovider-scrob-local/releases/latest/download/catalog.json
+```
+
+Silo then offers the plugin from this repository and updates it when a new release comes out. Every release carries `catalog.json`, built by `tools/catalog` from the manifest and the release checksums, and that URL always points at the latest one. Versions here are 0.3.x so they don't clash with the Silo-Community plugin's 0.2.x; both share the plugin id, so install the plugin from one repository only.
+
+Collection sync needs a Silo build with collection sync and builds against a [plugin SDK fork](https://github.com/Joloxx9/silo-plugin-sdk) that adds it. Stock Silo runs the plugin without collections.
+
 ## Capabilities
 
 - Validates each profile's Scrob API key without persisting it in the plugin.
